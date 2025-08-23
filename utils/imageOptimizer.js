@@ -1,11 +1,11 @@
 /**
  * Optimizes an image by resizing and compressing it.
- * @param dataUrl The base64 data URL of the image.
- * @param maxWidth The maximum width of the output image. Defaults to 1024px.
- * @param quality The JPEG quality (0 to 1). Defaults to 0.85.
- * @returns A promise that resolves with the optimized image as a base64 data URL.
+ * @param {string} dataUrl The base64 data URL of the image.
+ * @param {number} [maxWidth=1024] The maximum width of the output image.
+ * @param {number} [quality=0.85] The JPEG quality (0 to 1).
+ * @returns {Promise<string>} A promise that resolves with the optimized image as a base64 data URL.
  */
-export function optimizeImage(dataUrl: string, maxWidth: number = 1024, quality: number = 0.85): Promise<string> {
+export function optimizeImage(dataUrl, maxWidth = 1024, quality = 0.85) {
     return new Promise((resolve, reject) => {
         const img = new Image();
         img.onload = () => {
