@@ -198,6 +198,10 @@
     <canvas id="capture-canvas" class="hidden"></canvas>
     <input type="file" id="upload-input" class="hidden" accept="image/*">
     <div id="toastContainer"></div>
+    <div id="apiKeyError" class="absolute inset-0 z-50 bg-gray-800 text-white flex flex-col items-center justify-center p-8 text-center hidden">
+        <h2 class="text-2xl font-bold mb-4">설정 오류</h2>
+        <p>API 키가 설정되지 않았습니다. Netlify 배포 설정의 'Environment variables'에서 'API_KEY'를 올바르게 설정했는지 확인하고, 사이트를 다시 배포(re-deploy)해주세요.</p>
+    </div>
 
     <!-- Main Page -->
     <div id="mainPage" class="ui-layer">
@@ -275,6 +279,6 @@
         <footer class="footer-safe-area" style="height: 20px;"></footer>
     </div>
 
-    <script type="module" src="index.tsx"></script>
+    <script type="module" src="index.js"></script>
 </body>
 </html>
