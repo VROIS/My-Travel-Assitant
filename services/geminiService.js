@@ -1,9 +1,15 @@
-import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
+import { GoogleGenAI } from "@google/genai";
 
+// IMPORTANT: This check only works in environments where process.env is populated,
+// like Node.js or during a build step. In a pure client-side app served by Netlify,
+// this variable is NOT automatically available in the browser.
+// The actual API_KEY is injected by Netlify's build process, but since we have no build,
+// this check serves as a safeguard. The real check is the API call itself.
 const API_KEY = process.env.API_KEY;
 
 if (!API_KEY) {
-  throw new Error("API_KEY environment variable not set. Please set it in your hosting environment's secrets.");
+  // This error will be caught by the main script if the key is missing in the environment.
+  throw new Error("API_KEY environment variable not set. Please check your Netlify deployment settings.");
 }
 
 const ai = new GoogleGenAI({ apiKey: API_KEY });
@@ -34,10 +40,10 @@ const textSystemInstruction = `당신은 세계 최고의 여행 가이드 도�
 
 /**
  * Generates a description for an image using a streaming model.
- * @param base64Image The base64 encoded JPEG image data (without the 'data:image/jpeg;base64,' prefix).
- * @returns An async generator that yields text chunks from the AI.
+ * @param {string} base64Image The base64 encoded JPEG image data (without the 'data:image/jpeg;base64,' prefix).
+ * @returns {Promise<AsyncGenerator<{text: string}>>} An async generator that yields text chunks from the AI.
  */
-export async function generateDescriptionStream(base64Image: string): Promise<AsyncGenerator<{ text: string }>> {
+export async function generateDescriptionStream(base64Image) {
   try {
     const imagePart = {
       inlineData: {
@@ -66,10 +72,10 @@ export async function generateDescriptionStream(base64Image: string): Promise<As
 
 /**
  * Generates a description for a text prompt using a streaming model.
- * @param prompt The user's text prompt.
- * @returns An async generator that yields text chunks from the AI.
+ * @param {string} prompt The user's text prompt.
+ * @returns {Promise<AsyncGenerator<{text: string}>>} An async generator that yields text chunks from the AI.
  */
-export async function generateTextStream(prompt: string): Promise<AsyncGenerator<{ text: string }>> {
+export async function generateTextStream(prompt) {
     try {
         const responseStream = await ai.models.generateContentStream({
             model,
