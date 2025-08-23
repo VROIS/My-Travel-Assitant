@@ -29,7 +29,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const textOverlay = document.getElementById('textOverlay');
     const descriptionText = document.getElementById('descriptionText');
     const loadingHeader = document.getElementById('loadingHeader');
-    const loadingHeaderText = loadingHeader.querySelector('h1');
+    const loadingHeaderText = loadingHeader ? loadingHeader.querySelector('h1') : null;
     const loadingText = document.getElementById('loadingText');
     const detailFooter = document.getElementById('detailFooter');
     const audioBtn = document.getElementById('audioBtn');
@@ -268,8 +268,8 @@ document.addEventListener('DOMContentLoaded', () => {
         loader.classList.remove('hidden');
         textOverlay.classList.add('hidden');
         textOverlay.classList.remove('animate-in');
-        loadingHeader.classList.remove('hidden');
-        loadingHeaderText.textContent = '스마트 해설을 만들고 있어요...';
+        if (loadingHeader) loadingHeader.classList.remove('hidden');
+        if (loadingHeaderText) loadingHeaderText.textContent = '스마트 해설을 만들고 있어요...';
         detailFooter.classList.add('hidden');
         descriptionText.innerHTML = '';
         updateAudioButton('loading');
@@ -354,8 +354,8 @@ document.addEventListener('DOMContentLoaded', () => {
         loader.classList.remove('hidden');
         textOverlay.classList.add('hidden');
         textOverlay.classList.remove('animate-in');
-        loadingHeader.classList.remove('hidden');
-        loadingHeaderText.textContent = '답변을 찾고 있어요...';
+        if (loadingHeader) loadingHeader.classList.remove('hidden');
+        if (loadingHeaderText) loadingHeaderText.textContent = '답변을 찾고 있어요...';
         detailFooter.classList.add('hidden');
         descriptionText.innerHTML = '';
         updateAudioButton('loading');
@@ -385,7 +385,7 @@ document.addEventListener('DOMContentLoaded', () => {
         loader.classList.add('hidden');
         textOverlay.classList.remove('hidden');
         textOverlay.classList.add('animate-in');
-        loadingHeader.classList.add('hidden');
+        if (loadingHeader) loadingHeader.classList.add('hidden');
         detailFooter.classList.remove('hidden');
 
         let sentenceBuffer = '';
@@ -504,9 +504,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (confirm(message)) {
             const archive = getArchive();
             
-            // 수정: ID 타입 일관성 보장 (사용자 제안 코드)
             const updatedArchive = archive.filter(item => {
-                // item.id와 selectedItemIds의 값들을 모두 Number로 변환하여 비교
                 const itemId = Number(item.id);
                 return !Array.from(selectedItemIds).some(selectedId => Number(selectedId) === itemId);
             });
@@ -516,12 +514,17 @@ document.addEventListener('DOMContentLoaded', () => {
             if (success) {
                 showToast(`${count}개 항목이 삭제되었습니다.`);
                 
-                // 상태 초기화 (사용자 제안 코드)
+                // 1. 선택 모드를 직접 종료하고 상태를 정리합니다. (toggleSelectionMode 호출 제거)
+                isSelectionMode = false;
                 selectedItemIds.clear();
-                toggleSelectionMode(false); // 선택 모드 종료
                 
-                // UI 업데이트
+                // 2. 헤더 UI를 직접 업데이트합니다.
+                archiveHeader.classList.remove('hidden');
+                selectionHeader.classList.add('hidden');
+                
+                // 3. 최신 데이터로 화면을 한 번만 갱신합니다. (역할의 완전한 분리)
                 renderArchive(updatedArchive);
+    
             } else {
                 showToast('삭제 중 오류가 발생했습니다.');
             }
@@ -612,7 +615,7 @@ document.addEventListener('DOMContentLoaded', () => {
         loader.classList.add('hidden');
         textOverlay.classList.remove('hidden');
         textOverlay.classList.remove('animate-in');
-        loadingHeader.classList.add('hidden');
+        if (loadingHeader) loadingHeader.classList.add('hidden');
         detailFooter.classList.remove('hidden');
         
         const description = item.description || '';

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'my-travel-assistant-cache-v4'; // Cache version updated to v4
+const CACHE_NAME = 'my-travel-assistant-cache-v5'; // Final pre-deployment cache update
 const urlsToCache = [
   '/',
   'index.html',
@@ -7,7 +7,6 @@ const urlsToCache = [
   'utils/imageOptimizer.js',
   'https://cdn.tailwindcss.com',
   'https://fonts.googleapis.com/css2?family=Maru+Buri:wght@300;400;500;600;700&display=swap',
-  'https://esm.sh/@google/genai@^0.14.0'
 ];
 
 // On install, cache the core assets.
