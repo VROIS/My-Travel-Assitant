@@ -1,6 +1,6 @@
 {
-  "name": "내손안의 여행비서 (My Travel Assistant)",
-  "description": "An AI-powered travel assistant that analyzes images from your camera or gallery to provide you with interesting information and descriptions about landmarks and objects you encounter on your travels. This app is designed to be your personal tour guide, right in your pocket, powered by Google Gemini API.",
+  "name": "손안의 가이드",
+  "description": "사진과 음성으로 만나는 나만의 스마트 여행 가이드. 여행 중 마주치는 장소나 사물에 대한 흥미로운 해설을 실시간으로 제공합니다.",
   "requestFramePermissions": [
     "camera",
     "microphone"

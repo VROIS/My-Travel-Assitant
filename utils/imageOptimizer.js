@@ -1,3 +1,4 @@
+
 /**
  * Optimizes an image by resizing and compressing it.
  * @param {string} dataUrl The base64 data URL of the image.

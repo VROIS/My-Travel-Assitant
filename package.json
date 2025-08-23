@@ -1,0 +1,14 @@
+{
+  "name": "sonan-guide-functions",
+  "version": "1.0.0",
+  "description": "Serverless functions for the Sonan Guide app.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@google/genai": "^0.14.0"
+  }
+}

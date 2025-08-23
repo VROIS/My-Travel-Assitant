@@ -1,19 +1,57 @@
-import { GoogleGenAI } from "@google/genai";
+/**
+ * Generates a stream from the backend function.
+ * @param {object} body The request body to send to the backend.
+ * @returns {AsyncGenerator<{text: string}>} An async generator that yields text chunks from the backend.
+ */
+async function* generateStream(body) {
+    try {
+        const response = await fetch('/api/gemini', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(body),
+        });
 
-// IMPORTANT: This check only works in environments where process.env is populated,
-// like Node.js or during a build step. In a pure client-side app served by Netlify,
-// this variable is NOT automatically available in the browser.
-// The actual API_KEY is injected by Netlify's build process, but since we have no build,
-// this check serves as a safeguard. The real check is the API call itself.
-const API_KEY = process.env.API_KEY;
+        if (!response.ok || !response.body) {
+            const errorData = await response.json().catch(() => ({ error: 'Unknown server error' }));
+            throw new Error(errorData.error || `Server error: ${response.status}`);
+        }
+        
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
 
-if (!API_KEY) {
-  // This error will be caught by the main script if the key is missing in the environment.
-  throw new Error("API_KEY environment variable not set. Please check your Netlify deployment settings.");
+        let buffer = '';
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            
+            // Process buffer line by line for Server-Sent Events (SSE)
+            const parts = buffer.split('\n\n');
+            buffer = parts.pop() || ''; // Keep the last, possibly incomplete part
+
+            for (const part of parts) {
+                if (part.startsWith('data: ')) {
+                    const jsonString = part.substring(6);
+                    if (jsonString) {
+                        try {
+                           yield JSON.parse(jsonString);
+                        } catch (e) {
+                            console.error("Failed to parse stream JSON:", jsonString, e);
+                        }
+                    }
+                }
+            }
+        }
+
+    } catch (error) {
+        console.error("Error calling backend function:", error);
+        throw error;
+    }
 }
 
-const ai = new GoogleGenAI({ apiKey: API_KEY });
-const model = 'gemini-2.5-flash';
 
 const imageSystemInstruction = `당신은 세계 최고의 여행 가이드 도슨트입니다. 제공된 이미지를 분석하여, 한국어로 생생하게 설명해주세요.
 
@@ -27,7 +65,8 @@ const imageSystemInstruction = `당신은 세계 최고의 여행 가이드 도�
 - 1분 내외의 음성 해설에 적합한 길이
 - 전문 용어는 쉽게 풀어서 설명
 - 흥미로운 일화나 배경 지식 포함
-- 분석 과정, 기호, 번호, 별표 등은 제외하고 순수한 설명문만 출력`;
+- 분석 과정, 기호, 번호 등은 제외하고 순수한 설명문만 출력
+- 절대로 마크다운 강조 기호(\`**\`, \`*\` 등)를 사용하지 마세요.`;
 
 const textSystemInstruction = `당신은 세계 최고의 여행 가이드 도슨트입니다. 사용자의 질문에 대해, 한국어로 친절하고 상세하게 설명해주세요. 여행과 관련없는 질문이라도 최선을 다해 답변해주세요.
 
@@ -36,59 +75,31 @@ const textSystemInstruction = `당신은 세계 최고의 여행 가이드 도�
 - 1분 내외의 음성 해설에 적합한 길이
 - 전문 용어는 쉽게 풀어서 설명
 - 흥미로운 일화나 배경 지식 포함
-- 분석 과정, 기호, 번호, 별표 등은 제외하고 순수한 설명문만 출력`;
+- 분석 과정, 기호, 번호 등은 제외하고 순수한 설명문만 출력
+- 절대로 마크다운 강조 기호(\`**\`, \`*\` 등)를 사용하지 마세요.`;
 
 /**
- * Generates a description for an image using a streaming model.
+ * Generates a description for an image by calling the backend function.
  * @param {string} base64Image The base64 encoded JPEG image data (without the 'data:image/jpeg;base64,' prefix).
  * @returns {Promise<AsyncGenerator<{text: string}>>} An async generator that yields text chunks from the AI.
  */
 export async function generateDescriptionStream(base64Image) {
-  try {
-    const imagePart = {
-      inlineData: {
-        mimeType: 'image/jpeg',
-        data: base64Image,
-      },
-    };
-
-    const responseStream = await ai.models.generateContentStream({
-        model,
-        contents: { parts: [imagePart] },
-        config: {
-            systemInstruction: imageSystemInstruction,
-            temperature: 0.7,
-            topP: 0.9,
-        }
-    });
-
-    return responseStream;
-
-  } catch (error) {
-    console.error("Error calling Gemini API for image:", error);
-    throw new Error("Failed to get description stream from Gemini API.");
-  }
+  const body = {
+    base64Image,
+    systemInstruction: imageSystemInstruction,
+  };
+  return generateStream(body);
 }
 
 /**
- * Generates a description for a text prompt using a streaming model.
+ * Generates a description for a text prompt by calling the backend function.
  * @param {string} prompt The user's text prompt.
  * @returns {Promise<AsyncGenerator<{text: string}>>} An async generator that yields text chunks from the AI.
  */
 export async function generateTextStream(prompt) {
-    try {
-        const responseStream = await ai.models.generateContentStream({
-            model,
-            contents: { parts: [{ text: prompt }] },
-            config: {
-                systemInstruction: textSystemInstruction,
-                temperature: 0.7,
-                topP: 0.9,
-            }
-        });
-        return responseStream;
-    } catch (error) {
-        console.error("Error calling Gemini API for text:", error);
-        throw new Error("Failed to get text stream from Gemini API.");
-    }
+  const body = {
+    prompt,
+    systemInstruction: textSystemInstruction,
+  };
+  return generateStream(body);
 }

@@ -8,7 +8,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const canvas = document.getElementById('capture-canvas');
     const uploadInput = document.getElementById('upload-input');
     const toastContainer = document.getElementById('toastContainer');
-    const apiKeyError = document.getElementById('apiKeyError');
     
     // Pages
     const mainPage = document.getElementById('mainPage');
@@ -41,6 +40,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const archiveBackBtn = document.getElementById('archiveBackBtn');
     const archiveGrid = document.getElementById('archiveGrid');
     const emptyArchiveMessage = document.getElementById('emptyArchiveMessage');
+    const archiveHeader = document.getElementById('archiveHeader');
+    const selectionHeader = document.getElementById('selectionHeader');
+    const selectArchiveBtn = document.getElementById('selectArchiveBtn');
+    const cancelSelectionBtn = document.getElementById('cancelSelectionBtn');
+    const selectionCount = document.getElementById('selectionCount');
+    const deleteSelectedBtn = document.getElementById('deleteSelectedBtn');
 
     // Web Speech API
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -61,28 +66,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // App State
     const STORAGE_KEY = 'travel_assistant_archive';
     let currentContent = { imageDataUrl: null, description: '' };
+    let isSelectionMode = false;
+    let selectedItemIds = new Set();
     
-    // --- API Key Check ---
-    function checkApiKey() {
-        // This is a placeholder check. In a real Netlify environment, 
-        // process.env.API_KEY would be replaced during the build.
-        // Since we have no build step, this check is tricky.
-        // We will rely on the error thrown by the geminiService if the key is missing.
-        // For a more robust client-side check, you'd need a way to inject the key.
-        // Let's assume for now if geminiService.js loads, the key is present.
-        // A better approach is to have a dedicated check function.
-        if (!process.env.API_KEY) {
-             console.error("API_KEY is not defined. This will fail in geminiService.js");
-             if (apiKeyError) {
-                apiKeyError.classList.remove('hidden');
-                cameraStartOverlay.classList.add('hidden'); // Hide start button if key is missing
-             }
-             return false;
-        }
-        return true;
-    }
-
-
     // --- UI Helpers ---
     function showToast(message, duration = 3000) {
         if (!toastContainer) return;
@@ -128,7 +114,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         } catch (error) {
             console.error("Failed to restart camera.", error);
-            cameraStartOverlay.classList.remove('hidden');
+            if (cameraStartOverlay) cameraStartOverlay.classList.remove('hidden');
         }
     }
 
@@ -147,6 +133,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function showArchivePage() {
         stopCamera();
+        if (isSelectionMode) { // Exit selection mode if active
+            toggleSelectionMode(false); // Explicitly exit
+        }
         renderArchive();
         showPage(archivePage);
     }
@@ -173,10 +162,19 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function handleStartCameraClick() {
+        // This is the first user gesture. A perfect place to unlock audio context
+        // for SpeechSynthesis on mobile browsers.
+        if (synth && !synth.speaking) {
+            const unlockUtterance = new SpeechSynthesisUtterance('');
+            synth.speak(unlockUtterance);
+            // It might speak for a fraction of a second, cancel it immediately.
+            synth.cancel();
+        }
+
         cameraStartOverlay.removeEventListener('click', handleStartCameraClick);
 
-        const startText = cameraStartOverlay.querySelector('p');
-        if(startText) startText.classList.add('hidden');
+        const startTextElements = cameraStartOverlay.querySelectorAll('p, svg');
+        startTextElements.forEach(el => el.classList.add('hidden'));
         startLoader.classList.remove('hidden');
 
         try {
@@ -184,9 +182,10 @@ document.addEventListener('DOMContentLoaded', () => {
             cameraStartOverlay.classList.add('hidden');
         } catch (error) {
             console.error(`Initialization error: ${error.message}`);
-            if(startText) {
-                startText.textContent = "카메라 시작 실패. 다시 터치하세요.";
-                startText.classList.remove('hidden');
+            const errorText = cameraStartOverlay.querySelector('p');
+            if(errorText) {
+                errorText.textContent = "카메라 시작 실패. 다시 터치하세요.";
+                startTextElements.forEach(el => el.classList.remove('hidden'));
             }
             cameraStartOverlay.addEventListener('click', handleStartCameraClick);
         } finally {
@@ -200,9 +199,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 stream.getTracks().forEach(track => track.stop());
             }
             try {
-                const permissionStatus = await navigator.permissions.query({ name: 'camera' });
-                if (permissionStatus.state === 'denied') {
-                    throw new Error("카메라 권한이 거부되었습니다. 브라우저 설정에서 권한을 허용해주세요.");
+                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                    throw new Error("카메라 기능을 지원하지 않는 브라우저입니다.");
                 }
                 
                 stream = await navigator.mediaDevices.getUserMedia({
@@ -259,9 +257,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function processImage(dataUrl) {
         if (synth.speaking || synth.pending) synth.cancel();
-        const unlockUtterance = new SpeechSynthesisUtterance('');
-        synth.speak(unlockUtterance);
-        synth.cancel();
         resetSpeechState();
 
         showDetailPage();
@@ -274,12 +269,12 @@ document.addEventListener('DOMContentLoaded', () => {
         textOverlay.classList.add('hidden');
         textOverlay.classList.remove('animate-in');
         loadingHeader.classList.remove('hidden');
-        loadingHeaderText.textContent = 'AI 해설 생성 중...';
+        loadingHeaderText.textContent = '스마트 해설을 만들고 있어요...';
         detailFooter.classList.add('hidden');
         descriptionText.innerHTML = '';
         updateAudioButton('loading');
 
-        const loadingMessages = ["이미지를 분석하고 있습니다...", "핵심 정보를 추출하는 중...", "AI가 멋진 해설을 만들고 있어요!"];
+        const loadingMessages = ["이미지를 분석하고 있습니다...", "핵심 정보를 추출하는 중...", "나만의 가이드가 해설을 준비 중입니다."];
         let msgIndex = 0;
         loadingText.innerText = loadingMessages[msgIndex];
         const loadingInterval = window.setInterval(() => {
@@ -343,9 +338,6 @@ document.addEventListener('DOMContentLoaded', () => {
     
     async function processTextQuery(prompt) {
         if (synth.speaking || synth.pending) synth.cancel();
-        const unlockUtterance = new SpeechSynthesisUtterance('');
-        synth.speak(unlockUtterance);
-        synth.cancel();
         resetSpeechState();
         
         showDetailPage();
@@ -363,12 +355,12 @@ document.addEventListener('DOMContentLoaded', () => {
         textOverlay.classList.add('hidden');
         textOverlay.classList.remove('animate-in');
         loadingHeader.classList.remove('hidden');
-        loadingHeaderText.textContent = 'AI 답변 생성 중...';
+        loadingHeaderText.textContent = '답변을 찾고 있어요...';
         detailFooter.classList.add('hidden');
         descriptionText.innerHTML = '';
         updateAudioButton('loading');
 
-        const loadingMessages = ["질문을 분석하고 있습니다...", "관련 정보를 찾는 중...", "AI가 답변을 만들고 있어요!"];
+        const loadingMessages = ["질문을 분석하고 있습니다...", "관련 정보를 찾는 중...", "가이드가 답변을 준비하고 있습니다."];
         let msgIndex = 0;
         loadingText.innerText = loadingMessages[msgIndex];
         const loadingInterval = window.setInterval(() => {
@@ -382,7 +374,7 @@ document.addEventListener('DOMContentLoaded', () => {
             await processStream(stream, loadingInterval);
         } catch (err) {
             console.error(err);
-clearInterval(loadingInterval);
+            clearInterval(loadingInterval);
             descriptionText.innerText = "답변 생성 중 오류가 발생했습니다. 다시 시도해 주세요.";
             updateAudioButton('disabled');
         }
@@ -400,9 +392,9 @@ clearInterval(loadingInterval);
         for await (const chunk of stream) {
              if (currentStreamController?.signal.aborted) break;
             
-            const textChunk = chunk.text;
-            currentContent.description += textChunk;
-            sentenceBuffer += textChunk;
+            const cleanedChunk = chunk.text.replace(/\*\*/g, ''); // Remove markdown bold characters
+            currentContent.description += cleanedChunk;
+            sentenceBuffer += cleanedChunk;
 
             const sentenceEndings = /[.?!]/g;
             let match;
@@ -430,11 +422,31 @@ clearInterval(loadingInterval);
 
     function getArchive() {
         const data = localStorage.getItem(STORAGE_KEY);
-        return data ? JSON.parse(data) : [];
+        if (!data) {
+            return [];
+        }
+        try {
+            return JSON.parse(data);
+        } catch (e) {
+            console.error("Failed to parse archive data from localStorage. Data might be corrupted.", e);
+            return [];
+        }
     }
 
     function saveToArchive(items) {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+        try {
+            const dataToSave = JSON.stringify(items);
+            localStorage.setItem(STORAGE_KEY, dataToSave);
+            return true; // Indicate success
+        } catch (e) {
+            console.error("Failed to save to archive:", e);
+            if (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED') {
+                showToast("저장 공간이 부족하여 작업을 완료할 수 없습니다.");
+            } else {
+                showToast("알 수 없는 오류로 저장/삭제에 실패했습니다.");
+            }
+            return false; // Indicate failure
+        }
     }
 
     function handleSaveClick() {
@@ -446,57 +458,136 @@ clearInterval(loadingInterval);
             ...currentContent
         };
         archive.unshift(newItem);
-        saveToArchive(archive);
+        
+        const success = saveToArchive(archive);
 
-        showToast("보관함에 저장되었습니다.");
-
-        saveBtn.disabled = true;
-        const savedIcon = `<svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="currentColor" viewBox="0 0 24 24"><path d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" /></svg>`;
-        saveBtn.innerHTML = savedIcon;
+        if (success) {
+            showToast("보관함에 저장되었습니다.");
+            saveBtn.disabled = true;
+            const savedIcon = `<svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="currentColor" viewBox="0 0 24 24"><path d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" /></svg>`;
+            saveBtn.innerHTML = savedIcon;
+        }
     }
-
-    function handleDeleteItem(itemId) {
-        if (confirm("이 항목을 삭제하시겠습니까?")) {
-            const archive = getArchive();
-            const updatedArchive = archive.filter(item => item.id !== itemId);
-            saveToArchive(updatedArchive);
+    
+    function toggleSelectionMode(forceState) {
+        const previousState = isSelectionMode;
+        isSelectionMode = (typeof forceState === 'boolean') ? forceState : !isSelectionMode;
+    
+        // UI 상태 업데이트
+        archiveHeader.classList.toggle('hidden', isSelectionMode);
+        selectionHeader.classList.toggle('hidden', !isSelectionMode);
+    
+        if (isSelectionMode) {
+            // 선택 모드 진입
+            selectedItemIds.clear(); // 이전 선택 초기화
+            updateSelectionHeader();
+            renderArchive();
+        } else if (previousState) {
+            // 선택 모드 종료 (이전에 선택 모드였던 경우만)
+            selectedItemIds.clear();
             renderArchive();
         }
     }
+    
+    function updateSelectionHeader() {
+        const count = selectedItemIds.size;
+        selectionCount.textContent = `${count}개 선택`;
+        deleteSelectedBtn.disabled = count === 0;
+    }
 
-    function renderArchive() {
-        const archive = getArchive();
-        archiveGrid.innerHTML = '';
-        if (archive.length === 0) {
-            emptyArchiveMessage.classList.remove('hidden');
-        } else {
-            emptyArchiveMessage.classList.add('hidden');
-            archive.forEach(item => {
-                const itemDiv = document.createElement('div');
-                itemDiv.className = 'archive-item interactive-btn';
+    function handleDeleteSelected() {
+        const count = selectedItemIds.size;
+        if (count === 0) return;
+    
+        const message = count === 1 ? '1개의 항목을 삭제하시겠습니까?' : `${count}개의 항목을 삭제하시겠습니까?`;
+        
+        if (confirm(message)) {
+            const archive = getArchive();
+            
+            // 수정: ID 타입 일관성 보장 (사용자 제안 코드)
+            const updatedArchive = archive.filter(item => {
+                // item.id와 selectedItemIds의 값들을 모두 Number로 변환하여 비교
+                const itemId = Number(item.id);
+                return !Array.from(selectedItemIds).some(selectedId => Number(selectedId) === itemId);
+            });
+            
+            const success = saveToArchive(updatedArchive);
+    
+            if (success) {
+                showToast(`${count}개 항목이 삭제되었습니다.`);
                 
-                itemDiv.onclick = () => populateDetailPageFromArchive(item);
+                // 상태 초기화 (사용자 제안 코드)
+                selectedItemIds.clear();
+                toggleSelectionMode(false); // 선택 모드 종료
+                
+                // UI 업데이트
+                renderArchive(updatedArchive);
+            } else {
+                showToast('삭제 중 오류가 발생했습니다.');
+            }
+        }
+    }
 
-                let pressTimer;
-                const startPress = (e) => {
-                    e.preventDefault();
-                    pressTimer = window.setTimeout(() => {
-                        handleDeleteItem(item.id);
-                    }, 800);
-                };
-                const cancelPress = () => {
-                    clearTimeout(pressTimer);
-                };
-                itemDiv.addEventListener('mousedown', startPress);
-                itemDiv.addEventListener('touchstart', startPress);
-                itemDiv.addEventListener('mouseup', cancelPress);
-                itemDiv.addEventListener('mouseleave', cancelPress);
-                itemDiv.addEventListener('touchend', cancelPress);
-                itemDiv.addEventListener('touchmove', cancelPress);
-
+    function renderArchive(itemsToRender) {
+        const archive = itemsToRender || getArchive();
+        archiveGrid.innerHTML = '';
+    
+        const hasItems = archive.length > 0;
+        emptyArchiveMessage.classList.toggle('hidden', hasItems);
+        selectArchiveBtn.classList.toggle('hidden', !hasItems);
+    
+        if (hasItems) {
+            archive.forEach((item, index) => {
+                // 강화된 데이터 무결성 검사
+                if (!item) {
+                    console.warn(`Skipping null item at index ${index}`);
+                    return;
+                }
+                
+                if (typeof item.id === 'undefined' || item.id === null) {
+                    console.warn(`Skipping item without valid ID at index ${index}:`, item);
+                    return;
+                }
+    
+                // ID를 Number로 정규화
+                const itemId = Number(item.id);
+                if (isNaN(itemId)) {
+                    console.warn(`Skipping item with invalid ID at index ${index}:`, item.id);
+                    return;
+                }
+    
+                const description = item.description || '';
+                
+                const itemDiv = document.createElement('div');
+                itemDiv.className = 'archive-item';
+                itemDiv.dataset.id = itemId.toString(); // 문자열로 저장하되 Number로 정규화된 값 사용
+    
+                if (isSelectionMode) {
+                    itemDiv.classList.add('selectable');
+                    // Number로 비교
+                    if (selectedItemIds.has(itemId)) {
+                        itemDiv.classList.add('selected');
+                    }
+                }
+    
+                itemDiv.setAttribute('role', 'button');
+                itemDiv.setAttribute('tabindex', '0');
+                itemDiv.setAttribute('aria-label', `보관된 항목: ${description.substring(0, 30)}...`);
+                
+                if (isSelectionMode) {
+                    const checkbox = document.createElement('div');
+                    checkbox.className = 'selection-checkbox';
+                    checkbox.innerHTML = `
+                        <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="3">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"></path>
+                        </svg>
+                    `;
+                    itemDiv.appendChild(checkbox);
+                }
+    
                 const img = document.createElement('img');
                 img.src = item.imageDataUrl || 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
-                img.alt = item.description.substring(0, 30);
+                img.alt = description.substring(0, 30);
                 img.loading = 'lazy';
                 
                 itemDiv.appendChild(img);
@@ -504,6 +595,7 @@ clearInterval(loadingInterval);
             });
         }
     }
+    
 
     function populateDetailPageFromArchive(item) {
         resetSpeechState();
@@ -523,8 +615,11 @@ clearInterval(loadingInterval);
         loadingHeader.classList.add('hidden');
         detailFooter.classList.remove('hidden');
         
-        const sentences = item.description.match(/[^.?!]+[.?!]+/g) || [item.description];
+        const description = item.description || '';
+        
+        const sentences = description.match(/[^.?!]+[.?!]+/g) || [description];
         sentences.forEach(sentence => {
+            if (!sentence) return;
             const span = document.createElement('span');
             span.textContent = sentence.trim() + ' ';
             descriptionText.appendChild(span);
@@ -622,162 +717,112 @@ clearInterval(loadingInterval);
                 break;
         }
     }
+
+    function handleArchiveGridClick(event) {
+        const itemDiv = event.target.closest('.archive-item');
+        if (!itemDiv) return;
+    
+        // 수정: ID를 Number로 일관되게 처리 (사용자 제안 코드)
+        const itemIdString = itemDiv.dataset.id;
+        const itemId = Number(itemIdString);
+        
+        if (isNaN(itemId)) {
+            console.warn('Invalid item ID:', itemIdString);
+            return;
+        }
+    
+        if (isSelectionMode) {
+            event.preventDefault();
+            
+            // Set에 Number 타입으로 저장
+            if (selectedItemIds.has(itemId)) {
+                selectedItemIds.delete(itemId);
+                itemDiv.classList.remove('selected');
+            } else {
+                selectedItemIds.add(itemId);
+                itemDiv.classList.add('selected');
+            }
+            updateSelectionHeader();
+        } else {
+            const archive = getArchive();
+            const item = archive.find(i => Number(i.id) === itemId);
+            if (item) {
+                populateDetailPageFromArchive(item);
+            }
+        }
+    }
+
+    function handleArchiveGridKeydown(event) {
+        if (event.key === 'Enter' || event.key === ' ') {
+            const itemDiv = document.activeElement;
+            if (!isSelectionMode && itemDiv.classList.contains('archive-item') && archiveGrid.contains(itemDiv)) {
+                event.preventDefault(); 
+                const itemId = Number(itemDiv.dataset.id);
+                if (isNaN(itemId)) return;
+
+                const archive = getArchive();
+                const item = archive.find(i => Number(i.id) === itemId);
+                if (item) {
+                    populateDetailPageFromArchive(item);
+                }
+            }
+        }
+    }
+
+    function debugArchiveState() {
+        console.log('=== Archive Debug Info ===');
+        console.log('Selection Mode:', isSelectionMode);
+        console.log('Selected IDs:', Array.from(selectedItemIds));
+        console.log('Archive Items in localStorage:', getArchive().map(item => ({ id: item.id, type: typeof item.id })));
+        
+        const archiveItems = document.querySelectorAll('.archive-item');
+        console.log('DOM Items:', Array.from(archiveItems).map(item => ({ 
+            id: item.dataset.id, 
+            selected: item.classList.contains('selected') 
+        })));
+    }
     
     // --- Event Listeners ---
-    cameraStartOverlay.addEventListener('click', handleStartCameraClick);
-    shootBtn.addEventListener('click', capturePhoto);
-    uploadBtn.addEventListener('click', () => uploadInput.click());
-    micBtn.addEventListener('click', handleMicButtonClick);
-    archiveBtn.addEventListener('click', showArchivePage);
-    uploadInput.addEventListener('change', handleFileSelect);
+    if (cameraStartOverlay) cameraStartOverlay.addEventListener('click', handleStartCameraClick);
+    if (shootBtn) shootBtn.addEventListener('click', capturePhoto);
+    if (uploadBtn) uploadBtn.addEventListener('click', () => uploadInput.click());
+    if (micBtn) micBtn.addEventListener('click', handleMicButtonClick);
+    if (archiveBtn) archiveBtn.addEventListener('click', showArchivePage);
+    if (uploadInput) uploadInput.addEventListener('change', handleFileSelect);
     
-    backBtn.addEventListener('click', showMainPage);
-    archiveBackBtn.addEventListener('click', showMainPage);
+    if (backBtn) backBtn.addEventListener('click', showMainPage);
+    if (archiveBackBtn) archiveBackBtn.addEventListener('click', showMainPage);
     
-    audioBtn.addEventListener('click', handleAudioButtonClick);
-    saveBtn.addEventListener('click', handleSaveClick);
-    textToggleBtn.addEventListener('click', () => {
+    if (audioBtn) audioBtn.addEventListener('click', handleAudioButtonClick);
+    if (saveBtn) saveBtn.addEventListener('click', handleSaveClick);
+    if (textToggleBtn) textToggleBtn.addEventListener('click', () => {
         const isHidden = textOverlay.classList.toggle('hidden');
         textToggleBtn.setAttribute('aria-label', isHidden ? '해설 보기' : '해설 숨기기');
     });
 
+    if (selectArchiveBtn) selectArchiveBtn.addEventListener('click', () => toggleSelectionMode(true));
+    if (cancelSelectionBtn) cancelSelectionBtn.addEventListener('click', () => toggleSelectionMode(false));
+    if (deleteSelectedBtn) deleteSelectedBtn.addEventListener('click', handleDeleteSelected);
+    
+    if (archiveGrid) {
+        archiveGrid.addEventListener('click', handleArchiveGridClick);
+        archiveGrid.addEventListener('keydown', handleArchiveGridKeydown);
+    }
+
+    // --- Global Access ---
+    window.debugArchiveState = debugArchiveState;
+
     // Start the app
-    try {
-      if (checkApiKey()) {
-        initializeApp();
-      }
-    } catch (e) {
-      console.error(e);
-      if (apiKeyError) {
-        apiKeyError.classList.remove('hidden');
-        cameraStartOverlay.classList.add('hidden');
-      }
+    initializeApp();
+
+    // Register Service Worker for PWA
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('/service-worker.js').then(registration => {
+                console.log('SW registered: ', registration);
+            }).catch(registrationError => {
+                console.log('SW registration failed: ', registrationError);
+            });
+        });
     }
 });
---- START OF FILE _redirects ---
-
-/*    /index.html    200--- START OF FILE services/geminiService.js ---
-
-import { GoogleGenAI } from "@google/genai";
-
-const API_KEY = process.env.API_KEY;
-
-if (!API_KEY) {
-  throw new Error("API_KEY environment variable not set. Please set it in your hosting environment's secrets.");
-}
-
-const ai = new GoogleGenAI({ apiKey: API_KEY });
-const model = 'gemini-2.5-flash';
-
-const imageSystemInstruction = `당신은 세계 최고의 여행 가이드 도슨트입니다. 제공된 이미지를 분석하여, 한국어로 생생하게 설명해주세요.
-
-[분석 유형별 가이드라인]
-• 미술작품: 작품명, 작가, 시대적 배경, 예술적 특징, 감상 포인트
-• 건축/풍경: 명칭, 역사적 의의, 건축 양식, 특징, 방문 팁
-• 음식: 음식명, 특징, 유래, 맛의 특징, 추천 사항
-
-[출력 규칙]
-- 자연스러운 나레이션 형식으로 작성
-- 1분 내외의 음성 해설에 적합한 길이
-- 전문 용어는 쉽게 풀어서 설명
-- 흥미로운 일화나 배경 지식 포함
-- 분석 과정, 기호, 번호, 별표 등은 제외하고 순수한 설명문만 출력`;
-
-const textSystemInstruction = `당신은 세계 최고의 여행 가이드 도슨트입니다. 사용자의 질문에 대해, 한국어로 친절하고 상세하게 설명해주세요. 여행과 관련없는 질문이라도 최선을 다해 답변해주세요.
-
-[출력 규칙]
-- 자연스러운 나레이션 형식으로 작성
-- 1분 내외의 음성 해설에 적합한 길이
-- 전문 용어는 쉽게 풀어서 설명
-- 흥미로운 일화나 배경 지식 포함
-- 분석 과정, 기호, 번호, 별표 등은 제외하고 순수한 설명문만 출력`;
-
-/**
- * Generates a description for an image using a streaming model.
- * @param {string} base64Image The base64 encoded JPEG image data (without the 'data:image/jpeg;base64,' prefix).
- * @returns {AsyncGenerator<{text: string}>} An async generator that yields text chunks from the AI.
- */
-export async function generateDescriptionStream(base64Image) {
-  try {
-    const imagePart = {
-      inlineData: {
-        mimeType: 'image/jpeg',
-        data: base64Image,
-      },
-    };
-
-    const responseStream = await ai.models.generateContentStream({
-        model,
-        contents: { parts: [imagePart] },
-        config: {
-            systemInstruction: imageSystemInstruction,
-            temperature: 0.7,
-            topP: 0.9,
-        }
-    });
-
-    return responseStream;
-
-  } catch (error) {
-    console.error("Error calling Gemini API for image:", error);
-    throw new Error("Failed to get description stream from Gemini API.");
-  }
-}
-
-/**
- * Generates a description for a text prompt using a streaming model.
- * @param {string} prompt The user's text prompt.
- * @returns {AsyncGenerator<{text: string}>} An async generator that yields text chunks from the AI.
- */
-export async function generateTextStream(prompt) {
-    try {
-        const responseStream = await ai.models.generateContentStream({
-            model,
-            contents: { parts: [{ text: prompt }] },
-            config: {
-                systemInstruction: textSystemInstruction,
-                temperature: 0.7,
-                topP: 0.9,
-            }
-        });
-        return responseStream;
-    } catch (error) {
-        console.error("Error calling Gemini API for text:", error);
-        throw new Error("Failed to get text stream from Gemini API.");
-    }
-}--- START OF FILE utils/imageOptimizer.js ---
-
-/**
- * Optimizes an image by resizing and compressing it.
- * @param {string} dataUrl The base64 data URL of the image.
- * @param {number} [maxWidth=1024] The maximum width of the output image.
- * @param {number} [quality=0.85] The JPEG quality (0 to 1).
- * @returns {Promise<string>} A promise that resolves with the optimized image as a base64 data URL.
- */
-export function optimizeImage(dataUrl, maxWidth = 1024, quality = 0.85) {
-    return new Promise((resolve, reject) => {
-        const img = new Image();
-        img.onload = () => {
-            const canvas = document.createElement('canvas');
-            const scale = maxWidth / img.width;
-            const newWidth = img.width > maxWidth ? maxWidth : img.width;
-            const newHeight = img.height * (img.width > maxWidth ? scale : 1);
-
-            canvas.width = newWidth;
-            canvas.height = newHeight;
-
-            const ctx = canvas.getContext('2d');
-            if (!ctx) {
-                return reject(new Error('Could not get canvas context'));
-            }
-            ctx.drawImage(img, 0, 0, newWidth, newHeight);
-
-            const optimizedDataUrl = canvas.toDataURL('image/jpeg', quality);
-            resolve(optimizedDataUrl);
-        };
-        img.onerror = (err) => {
-            reject(new Error(`Failed to load image for optimization.`));
-        };
-        img.src = dataUrl;
-    });
-}
