@@ -1,87 +1,100 @@
 // Import services and utils
-import { generateDescriptionStream, generateTextStream } from './services/geminiService.ts';
-import { optimizeImage } from './utils/imageOptimizer.ts';
-
-// Type definition for archived items
-interface ArchivedItem {
-    id: number;
-    imageDataUrl: string | null;
-    description: string;
-}
+import { generateDescriptionStream, generateTextStream } from './services/geminiService.js';
+import { optimizeImage } from './utils/imageOptimizer.js';
 
 document.addEventListener('DOMContentLoaded', () => {
     // DOM Elements
-    const video = document.getElementById('camera-feed') as HTMLVideoElement;
-    const canvas = document.getElementById('capture-canvas') as HTMLCanvasElement;
-    const uploadInput = document.getElementById('upload-input') as HTMLInputElement;
-    const toastContainer = document.getElementById('toastContainer') as HTMLDivElement;
+    const video = document.getElementById('camera-feed');
+    const canvas = document.getElementById('capture-canvas');
+    const uploadInput = document.getElementById('upload-input');
+    const toastContainer = document.getElementById('toastContainer');
+    const apiKeyError = document.getElementById('apiKeyError');
     
     // Pages
-    const mainPage = document.getElementById('mainPage') as HTMLDivElement;
-    const detailPage = document.getElementById('detailPage') as HTMLDivElement;
-    const archivePage = document.getElementById('archivePage') as HTMLDivElement;
+    const mainPage = document.getElementById('mainPage');
+    const detailPage = document.getElementById('detailPage');
+    const archivePage = document.getElementById('archivePage');
 
     // Main Page Elements
-    const cameraStartOverlay = document.getElementById('cameraStartOverlay') as HTMLDivElement;
-    const startLoader = document.getElementById('startLoader') as HTMLDivElement;
-    const shootBtn = document.getElementById('shootBtn') as HTMLButtonElement;
-    const uploadBtn = document.getElementById('uploadBtn') as HTMLButtonElement;
-    const micBtn = document.getElementById('micBtn') as HTMLButtonElement;
-    const archiveBtn = document.getElementById('archiveBtn') as HTMLButtonElement;
+    const cameraStartOverlay = document.getElementById('cameraStartOverlay');
+    const startLoader = document.getElementById('startLoader');
+    const shootBtn = document.getElementById('shootBtn');
+    const uploadBtn = document.getElementById('uploadBtn');
+    const micBtn = document.getElementById('micBtn');
+    const archiveBtn = document.getElementById('archiveBtn');
 
     // Detail Page Elements
-    const backBtn = document.getElementById('backBtn') as HTMLButtonElement;
-    const resultImage = document.getElementById('resultImage') as HTMLImageElement;
-    const loader = document.getElementById('loader') as HTMLDivElement;
-    const textOverlay = document.getElementById('textOverlay') as HTMLDivElement;
-    const descriptionText = document.getElementById('descriptionText') as HTMLParagraphElement;
-    const loadingHeader = document.getElementById('loadingHeader') as HTMLDivElement;
-    const loadingHeaderText = loadingHeader.querySelector('h1') as HTMLHeadingElement;
-    const loadingText = document.getElementById('loadingText') as HTMLParagraphElement;
-    const detailFooter = document.getElementById('detailFooter') as HTMLDivElement;
-    const audioBtn = document.getElementById('audioBtn') as HTMLButtonElement;
-    const textToggleBtn = document.getElementById('textToggleBtn') as HTMLButtonElement;
-    const saveBtn = document.getElementById('saveBtn') as HTMLButtonElement;
+    const backBtn = document.getElementById('backBtn');
+    const resultImage = document.getElementById('resultImage');
+    const loader = document.getElementById('loader');
+    const textOverlay = document.getElementById('textOverlay');
+    const descriptionText = document.getElementById('descriptionText');
+    const loadingHeader = document.getElementById('loadingHeader');
+    const loadingHeaderText = loadingHeader.querySelector('h1');
+    const loadingText = document.getElementById('loadingText');
+    const detailFooter = document.getElementById('detailFooter');
+    const audioBtn = document.getElementById('audioBtn');
+    const textToggleBtn = document.getElementById('textToggleBtn');
+    const saveBtn = document.getElementById('saveBtn');
 
     // Archive Page Elements
-    const archiveBackBtn = document.getElementById('archiveBackBtn') as HTMLButtonElement;
-    const archiveGrid = document.getElementById('archiveGrid') as HTMLDivElement;
-    const emptyArchiveMessage = document.getElementById('emptyArchiveMessage') as HTMLParagraphElement;
+    const archiveBackBtn = document.getElementById('archiveBackBtn');
+    const archiveGrid = document.getElementById('archiveGrid');
+    const emptyArchiveMessage = document.getElementById('emptyArchiveMessage');
 
     // Web Speech API
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    let recognition: any | null = SpeechRecognition ? new SpeechRecognition() : null;
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    let recognition = SpeechRecognition ? new SpeechRecognition() : null;
     let isRecognizing = false;
 
-    let stream: MediaStream | null = null;
+    let stream = null;
     let isCameraActive = false; // To prevent camera re-initialization
     
     // TTS State
     const synth = window.speechSynthesis;
-    let utteranceQueue: { utterance: SpeechSynthesisUtterance; element: HTMLElement; }[] = [];
+    let utteranceQueue = [];
     let isSpeaking = false;
     let isPaused = false;
-    let currentStreamController: AbortController | null = null;
-    let currentlySpeakingElement: HTMLElement | null = null;
+    let currentStreamController = null;
+    let currentlySpeakingElement = null;
 
     // App State
     const STORAGE_KEY = 'travel_assistant_archive';
-    let currentContent: { imageDataUrl: string | null; description: string; } = { imageDataUrl: null, description: '' };
+    let currentContent = { imageDataUrl: null, description: '' };
+    
+    // --- API Key Check ---
+    function checkApiKey() {
+        // This is a placeholder check. In a real Netlify environment, 
+        // process.env.API_KEY would be replaced during the build.
+        // Since we have no build step, this check is tricky.
+        // We will rely on the error thrown by the geminiService if the key is missing.
+        // For a more robust client-side check, you'd need a way to inject the key.
+        // Let's assume for now if geminiService.js loads, the key is present.
+        // A better approach is to have a dedicated check function.
+        if (!process.env.API_KEY) {
+             console.error("API_KEY is not defined. This will fail in geminiService.js");
+             if (apiKeyError) {
+                apiKeyError.classList.remove('hidden');
+                cameraStartOverlay.classList.add('hidden'); // Hide start button if key is missing
+             }
+             return false;
+        }
+        return true;
+    }
+
 
     // --- UI Helpers ---
-    function showToast(message: string, duration = 3000) {
+    function showToast(message, duration = 3000) {
         if (!toastContainer) return;
         const toast = document.createElement('div');
         toast.className = 'toast-notification';
         toast.textContent = message;
         toastContainer.appendChild(toast);
 
-        // Animate in
         requestAnimationFrame(() => {
             toast.classList.add('show');
         });
 
-        // Animate out and remove
         setTimeout(() => {
             toast.classList.remove('show');
             toast.addEventListener('transitionend', () => {
@@ -91,9 +104,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // --- Page Control ---
-    function showPage(pageToShow: HTMLElement) {
+    function showPage(pageToShow) {
         [mainPage, detailPage, archivePage].forEach(page => {
-            page.classList.toggle('visible', page === pageToShow);
+            if (page) page.classList.toggle('visible', page === pageToShow);
         });
     }
     
@@ -104,14 +117,12 @@ document.addEventListener('DOMContentLoaded', () => {
         synth.cancel();
         resetSpeechState();
         showPage(mainPage);
-        resultImage.classList.remove('hidden'); // Ensure it's visible for next time
-        // Clean up styles from text-only view
+        resultImage.classList.remove('hidden');
         detailPage.classList.remove('bg-white');
         descriptionText.classList.remove('text-gray-800');
         descriptionText.classList.add('readable-on-image');
 
         try {
-            // Only start camera if it's not already active
             if (!isCameraActive) {
                 await startCamera();
             }
@@ -162,7 +173,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function handleStartCameraClick() {
-        // We handle the 'once' logic manually to allow for retries
         cameraStartOverlay.removeEventListener('click', handleStartCameraClick);
 
         const startText = cameraStartOverlay.querySelector('p');
@@ -173,27 +183,24 @@ document.addEventListener('DOMContentLoaded', () => {
             await startCamera();
             cameraStartOverlay.classList.add('hidden');
         } catch (error) {
-            console.error(`Initialization error: ${(error as Error).message}`);
+            console.error(`Initialization error: ${error.message}`);
             if(startText) {
                 startText.textContent = "카메라 시작 실패. 다시 터치하세요.";
                 startText.classList.remove('hidden');
             }
-            // Re-add listener on failure
             cameraStartOverlay.addEventListener('click', handleStartCameraClick);
         } finally {
             startLoader.classList.add('hidden');
         }
     }
 
-
-    // --- Camera Controls ---
-    function startCamera(): Promise<void> {
+    function startCamera() {
         return new Promise(async (resolve, reject) => {
             if (stream) {
                 stream.getTracks().forEach(track => track.stop());
             }
             try {
-                const permissionStatus = await navigator.permissions.query({ name: 'camera' as PermissionName });
+                const permissionStatus = await navigator.permissions.query({ name: 'camera' });
                 if (permissionStatus.state === 'denied') {
                     throw new Error("카메라 권한이 거부되었습니다. 브라우저 설정에서 권한을 허용해주세요.");
                 }
@@ -229,7 +236,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // --- Image Handling & AI Analysis ---
     function capturePhoto() {
         if (!video.videoWidth || !video.videoHeight) return;
         canvas.width = video.videoWidth;
@@ -241,18 +247,17 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
     
-    function handleFileSelect(event: Event) {
-        const file = (event.target as HTMLInputElement).files?.[0];
+    function handleFileSelect(event) {
+        const file = event.target.files?.[0];
         if (file) {
             const reader = new FileReader();
-            reader.onload = (e) => processImage(e.target?.result as string);
+            reader.onload = (e) => processImage(e.target?.result);
             reader.readAsDataURL(file);
         }
-        (event.target as HTMLInputElement).value = '';
+        event.target.value = '';
     }
 
-    async function processImage(dataUrl: string) {
-        // Unlock audio & reset state on user gesture
+    async function processImage(dataUrl) {
         if (synth.speaking || synth.pending) synth.cancel();
         const unlockUtterance = new SpeechSynthesisUtterance('');
         synth.speak(unlockUtterance);
@@ -263,7 +268,6 @@ document.addEventListener('DOMContentLoaded', () => {
         
         currentContent = { imageDataUrl: dataUrl, description: '' };
         
-        // Reset UI
         resultImage.src = dataUrl;
         resultImage.classList.remove('hidden');
         loader.classList.remove('hidden');
@@ -275,7 +279,6 @@ document.addEventListener('DOMContentLoaded', () => {
         descriptionText.innerHTML = '';
         updateAudioButton('loading');
 
-        // Dynamic loading messages
         const loadingMessages = ["이미지를 분석하고 있습니다...", "핵심 정보를 추출하는 중...", "AI가 멋진 해설을 만들고 있어요!"];
         let msgIndex = 0;
         loadingText.innerText = loadingMessages[msgIndex];
@@ -287,7 +290,7 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const optimizedDataUrl = await optimizeImage(dataUrl);
             const base64Image = optimizedDataUrl.split(',')[1];
-            currentContent.imageDataUrl = optimizedDataUrl; // Store optimized version for saving
+            currentContent.imageDataUrl = optimizedDataUrl;
 
             currentStreamController = new AbortController();
             const stream = await generateDescriptionStream(base64Image);
@@ -302,7 +305,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
     
-    // --- Voice Search Handling ---
     function handleMicButtonClick() {
         if (!recognition) {
             showToast("음성 인식이 지원되지 않는 브라우저입니다.");
@@ -317,12 +319,12 @@ document.addEventListener('DOMContentLoaded', () => {
         micBtn.classList.add('mic-listening');
         recognition.start();
 
-        recognition.onresult = (event: any) => {
+        recognition.onresult = (event) => {
             const transcript = event.results[0][0].transcript;
             processTextQuery(transcript);
         };
 
-        recognition.onerror = (event: any) => {
+        recognition.onerror = (event) => {
             console.error('Speech recognition error:', event.error);
             if (event.error === 'no-speech') {
                 showToast('음성을 인식하지 못했습니다. 다시 시도해주세요.');
@@ -339,7 +341,7 @@ document.addEventListener('DOMContentLoaded', () => {
         };
     }
     
-    async function processTextQuery(prompt: string) {
+    async function processTextQuery(prompt) {
         if (synth.speaking || synth.pending) synth.cancel();
         const unlockUtterance = new SpeechSynthesisUtterance('');
         synth.speak(unlockUtterance);
@@ -348,15 +350,13 @@ document.addEventListener('DOMContentLoaded', () => {
         
         showDetailPage();
         
-        // Style page for text-only view
         detailPage.classList.add('bg-white');
         descriptionText.classList.add('text-gray-800');
         descriptionText.classList.remove('readable-on-image');
-        saveBtn.disabled = true; // No image to save
+        saveBtn.disabled = true;
 
         currentContent = { imageDataUrl: null, description: '' };
 
-        // Reset UI for text query
         resultImage.src = '';
         resultImage.classList.add('hidden');
         loader.classList.remove('hidden');
@@ -382,14 +382,13 @@ document.addEventListener('DOMContentLoaded', () => {
             await processStream(stream, loadingInterval);
         } catch (err) {
             console.error(err);
-            clearInterval(loadingInterval);
+clearInterval(loadingInterval);
             descriptionText.innerText = "답변 생성 중 오류가 발생했습니다. 다시 시도해 주세요.";
             updateAudioButton('disabled');
         }
     }
 
-    // --- Common Stream Processing ---
-    async function processStream(stream: AsyncGenerator<{ text: string }>, loadingInterval: number) {
+    async function processStream(stream, loadingInterval) {
         clearInterval(loadingInterval);
         loader.classList.add('hidden');
         textOverlay.classList.remove('hidden');
@@ -429,13 +428,12 @@ document.addEventListener('DOMContentLoaded', () => {
         currentStreamController = null;
     }
 
-    // --- Archive & Save Logic ---
-    function getArchive(): ArchivedItem[] {
+    function getArchive() {
         const data = localStorage.getItem(STORAGE_KEY);
         return data ? JSON.parse(data) : [];
     }
 
-    function saveToArchive(items: ArchivedItem[]) {
+    function saveToArchive(items) {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
     }
 
@@ -443,11 +441,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!currentContent.description || !currentContent.imageDataUrl) return;
 
         const archive = getArchive();
-        const newItem: ArchivedItem = {
+        const newItem = {
             id: Date.now(),
             ...currentContent
         };
-        archive.unshift(newItem); // Add to the beginning
+        archive.unshift(newItem);
         saveToArchive(archive);
 
         showToast("보관함에 저장되었습니다.");
@@ -457,12 +455,12 @@ document.addEventListener('DOMContentLoaded', () => {
         saveBtn.innerHTML = savedIcon;
     }
 
-    function handleDeleteItem(itemId: number) {
+    function handleDeleteItem(itemId) {
         if (confirm("이 항목을 삭제하시겠습니까?")) {
             const archive = getArchive();
             const updatedArchive = archive.filter(item => item.id !== itemId);
             saveToArchive(updatedArchive);
-            renderArchive(); // Re-render the grid
+            renderArchive();
         }
     }
 
@@ -477,16 +475,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 const itemDiv = document.createElement('div');
                 itemDiv.className = 'archive-item interactive-btn';
                 
-                // Click to view
                 itemDiv.onclick = () => populateDetailPageFromArchive(item);
 
-                // Long-press to delete
-                let pressTimer: number;
-                const startPress = (e: Event) => {
+                let pressTimer;
+                const startPress = (e) => {
                     e.preventDefault();
                     pressTimer = window.setTimeout(() => {
                         handleDeleteItem(item.id);
-                    }, 800); // 800ms for long press
+                    }, 800);
                 };
                 const cancelPress = () => {
                     clearTimeout(pressTimer);
@@ -499,7 +495,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 itemDiv.addEventListener('touchmove', cancelPress);
 
                 const img = document.createElement('img');
-                img.src = item.imageDataUrl || 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs='; // Use transparent pixel if no image
+                img.src = item.imageDataUrl || 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
                 img.alt = item.description.substring(0, 30);
                 img.loading = 'lazy';
                 
@@ -509,14 +505,12 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function populateDetailPageFromArchive(item: ArchivedItem) {
+    function populateDetailPageFromArchive(item) {
         resetSpeechState();
         
-        // Populate UI
         resultImage.src = item.imageDataUrl || '';
         resultImage.classList.toggle('hidden', !item.imageDataUrl);
 
-        // Style page correctly for archive view (which always has an image)
         detailPage.classList.remove('bg-white');
         descriptionText.classList.remove('text-gray-800');
         descriptionText.classList.add('readable-on-image');
@@ -525,11 +519,10 @@ document.addEventListener('DOMContentLoaded', () => {
         
         loader.classList.add('hidden');
         textOverlay.classList.remove('hidden');
-        textOverlay.classList.remove('animate-in'); // No animation for archive view
+        textOverlay.classList.remove('animate-in');
         loadingHeader.classList.add('hidden');
         detailFooter.classList.remove('hidden');
         
-        // Re-create spans and queue for TTS
         const sentences = item.description.match(/[^.?!]+[.?!]+/g) || [item.description];
         sentences.forEach(sentence => {
             const span = document.createElement('span');
@@ -542,7 +535,6 @@ document.addEventListener('DOMContentLoaded', () => {
         showDetailPage(true);
     }
 
-    // --- TTS Controls ---
     function playNextInQueue() {
         if (isPaused || utteranceQueue.length === 0) {
             if (utteranceQueue.length === 0) {
@@ -572,7 +564,7 @@ document.addEventListener('DOMContentLoaded', () => {
         synth.speak(utterance);
     }
 
-    function queueForSpeech(text: string, element: HTMLElement) {
+    function queueForSpeech(text, element) {
         const utterance = new SpeechSynthesisUtterance(text);
         utterance.lang = 'ko-KR';
         utteranceQueue.push({ utterance, element });
@@ -584,7 +576,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function handleAudioButtonClick() {
-        if (!isSpeaking && utteranceQueue.length > 0) { // Play
+        if (!isSpeaking && utteranceQueue.length > 0) {
             isPaused = false;
             if (synth.paused) {
                 synth.resume();
@@ -592,18 +584,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 playNextInQueue();
             }
             updateAudioButton('pause');
-        } else if (isSpeaking && !isPaused) { // Pause
+        } else if (isSpeaking && !isPaused) {
             isPaused = true;
             synth.pause();
             updateAudioButton('resume');
-        } else if (isSpeaking && isPaused) { // Resume
+        } else if (isSpeaking && isPaused) {
             isPaused = false;
             synth.resume();
             updateAudioButton('pause');
         }
     }
     
-    function updateAudioButton(state: 'play' | 'pause' | 'resume' | 'loading' | 'disabled') {
+    function updateAudioButton(state) {
         const playIcon = `<svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>`;
         const pauseIcon = `<svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>`;
         const loadingIcon = `<div class="w-8 h-8 border-4 border-white/20 border-t-white rounded-full animate-spin"></div>`;
@@ -650,5 +642,142 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // Start the app
-    initializeApp();
+    try {
+      if (checkApiKey()) {
+        initializeApp();
+      }
+    } catch (e) {
+      console.error(e);
+      if (apiKeyError) {
+        apiKeyError.classList.remove('hidden');
+        cameraStartOverlay.classList.add('hidden');
+      }
+    }
 });
+--- START OF FILE _redirects ---
+
+/*    /index.html    200--- START OF FILE services/geminiService.js ---
+
+import { GoogleGenAI } from "@google/genai";
+
+const API_KEY = process.env.API_KEY;
+
+if (!API_KEY) {
+  throw new Error("API_KEY environment variable not set. Please set it in your hosting environment's secrets.");
+}
+
+const ai = new GoogleGenAI({ apiKey: API_KEY });
+const model = 'gemini-2.5-flash';
+
+const imageSystemInstruction = `당신은 세계 최고의 여행 가이드 도슨트입니다. 제공된 이미지를 분석하여, 한국어로 생생하게 설명해주세요.
+
+[분석 유형별 가이드라인]
+• 미술작품: 작품명, 작가, 시대적 배경, 예술적 특징, 감상 포인트
+• 건축/풍경: 명칭, 역사적 의의, 건축 양식, 특징, 방문 팁
+• 음식: 음식명, 특징, 유래, 맛의 특징, 추천 사항
+
+[출력 규칙]
+- 자연스러운 나레이션 형식으로 작성
+- 1분 내외의 음성 해설에 적합한 길이
+- 전문 용어는 쉽게 풀어서 설명
+- 흥미로운 일화나 배경 지식 포함
+- 분석 과정, 기호, 번호, 별표 등은 제외하고 순수한 설명문만 출력`;
+
+const textSystemInstruction = `당신은 세계 최고의 여행 가이드 도슨트입니다. 사용자의 질문에 대해, 한국어로 친절하고 상세하게 설명해주세요. 여행과 관련없는 질문이라도 최선을 다해 답변해주세요.
+
+[출력 규칙]
+- 자연스러운 나레이션 형식으로 작성
+- 1분 내외의 음성 해설에 적합한 길이
+- 전문 용어는 쉽게 풀어서 설명
+- 흥미로운 일화나 배경 지식 포함
+- 분석 과정, 기호, 번호, 별표 등은 제외하고 순수한 설명문만 출력`;
+
+/**
+ * Generates a description for an image using a streaming model.
+ * @param {string} base64Image The base64 encoded JPEG image data (without the 'data:image/jpeg;base64,' prefix).
+ * @returns {AsyncGenerator<{text: string}>} An async generator that yields text chunks from the AI.
+ */
+export async function generateDescriptionStream(base64Image) {
+  try {
+    const imagePart = {
+      inlineData: {
+        mimeType: 'image/jpeg',
+        data: base64Image,
+      },
+    };
+
+    const responseStream = await ai.models.generateContentStream({
+        model,
+        contents: { parts: [imagePart] },
+        config: {
+            systemInstruction: imageSystemInstruction,
+            temperature: 0.7,
+            topP: 0.9,
+        }
+    });
+
+    return responseStream;
+
+  } catch (error) {
+    console.error("Error calling Gemini API for image:", error);
+    throw new Error("Failed to get description stream from Gemini API.");
+  }
+}
+
+/**
+ * Generates a description for a text prompt using a streaming model.
+ * @param {string} prompt The user's text prompt.
+ * @returns {AsyncGenerator<{text: string}>} An async generator that yields text chunks from the AI.
+ */
+export async function generateTextStream(prompt) {
+    try {
+        const responseStream = await ai.models.generateContentStream({
+            model,
+            contents: { parts: [{ text: prompt }] },
+            config: {
+                systemInstruction: textSystemInstruction,
+                temperature: 0.7,
+                topP: 0.9,
+            }
+        });
+        return responseStream;
+    } catch (error) {
+        console.error("Error calling Gemini API for text:", error);
+        throw new Error("Failed to get text stream from Gemini API.");
+    }
+}--- START OF FILE utils/imageOptimizer.js ---
+
+/**
+ * Optimizes an image by resizing and compressing it.
+ * @param {string} dataUrl The base64 data URL of the image.
+ * @param {number} [maxWidth=1024] The maximum width of the output image.
+ * @param {number} [quality=0.85] The JPEG quality (0 to 1).
+ * @returns {Promise<string>} A promise that resolves with the optimized image as a base64 data URL.
+ */
+export function optimizeImage(dataUrl, maxWidth = 1024, quality = 0.85) {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+            const canvas = document.createElement('canvas');
+            const scale = maxWidth / img.width;
+            const newWidth = img.width > maxWidth ? maxWidth : img.width;
+            const newHeight = img.height * (img.width > maxWidth ? scale : 1);
+
+            canvas.width = newWidth;
+            canvas.height = newHeight;
+
+            const ctx = canvas.getContext('2d');
+            if (!ctx) {
+                return reject(new Error('Could not get canvas context'));
+            }
+            ctx.drawImage(img, 0, 0, newWidth, newHeight);
+
+            const optimizedDataUrl = canvas.toDataURL('image/jpeg', quality);
+            resolve(optimizedDataUrl);
+        };
+        img.onerror = (err) => {
+            reject(new Error(`Failed to load image for optimization.`));
+        };
+        img.src = dataUrl;
+    });
+}
