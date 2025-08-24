@@ -1,12 +1,12 @@
-const CACHE_NAME = 'my-travel-assistant-cache-v7'; // Force update by bumping cache version
+const CACHE_NAME = 'my-travel-assistant-cache-v8'; // Force update by bumping cache version
 const urlsToCache = [
   '/',
   'index.html',
   'index.js',
   'services/geminiService.js',
   'utils/imageOptimizer.js',
-  'https://cdn.tailwindcss.com',
-  'https://fonts.googleapis.com/css2?family=Maru+Buri:wght@300;400;500;600;700&display=swap',
+  // External URLs removed to prevent CORS errors during service worker installation.
+  // The browser's standard HTTP cache will handle these effectively.
 ];
 
 // On install, cache the core assets.
@@ -46,8 +46,8 @@ self.addEventListener('activate', event => {
 
 // On fetch, use a network-first strategy.
 self.addEventListener('fetch', event => {
-  // We only want to handle GET requests
-  if (event.request.method !== 'GET') {
+  // We only want to handle GET requests for our app's assets.
+  if (event.request.method !== 'GET' || !event.request.url.startsWith(self.location.origin)) {
     return;
   }
   
