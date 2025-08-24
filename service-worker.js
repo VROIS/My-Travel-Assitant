@@ -1,4 +1,4 @@
-const CACHE_NAME = 'my-travel-assistant-cache-v5'; // Final pre-deployment cache update
+const CACHE_NAME = 'my-travel-assistant-cache-v6'; // Force update by bumping cache version
 const urlsToCache = [
   '/',
   'index.html',
