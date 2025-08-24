@@ -1,3 +1,4 @@
+
 import { GoogleGenAI } from "@google/genai";
 
 // This code runs on Netlify's servers, not in the user's browser.
@@ -25,8 +26,11 @@ export default async (req) => {
             const imagePart = {
                 inlineData: { mimeType: 'image/jpeg', data: base64Image },
             };
-            // Corrected: For a single request, 'contents' should be a single Content object.
-            contents = { parts: [imagePart] };
+            const textPart = {
+                text: "이 이미지에 대해 설명해 줘."
+            };
+            // Corrected: For a single request, 'contents' should be a single Content object with both parts.
+            contents = { parts: [imagePart, textPart] };
         } else if (prompt) {
             // Corrected: For a simple text request, 'contents' can be just the prompt string.
             contents = prompt;
