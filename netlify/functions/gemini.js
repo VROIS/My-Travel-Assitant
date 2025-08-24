@@ -25,13 +25,13 @@ export default async (req) => {
             const imagePart = {
                 inlineData: { mimeType: 'image/jpeg', data: base64Image },
             };
-            // Corrected: The 'contents' property must be an array of Content objects.
-            contents = [{ parts: [imagePart] }];
+            // Corrected: For a single request, 'contents' should be a single Content object.
+            contents = { parts: [imagePart] };
         } else if (prompt) {
-            // Corrected: The 'contents' property must be an array of Content objects.
-            contents = [{ parts: [{ text: prompt }] }];
+            // Corrected: For a simple text request, 'contents' can be just the prompt string.
+            contents = prompt;
         } else {
-            return new Response(JSON.stringify({ error: "Missing 'base64Image' or 'prompt' in request body" }), { status: 400 });
+            return new Response(JSON.stringify({ error: "Missing 'base64Image' or 'prompt' in request body" }), { status: 400, headers: { "Content-Type": "application/json" } });
         }
 
         const genAIStream = await ai.models.generateContentStream({
