@@ -25,9 +25,11 @@ export default async (req) => {
             const imagePart = {
                 inlineData: { mimeType: 'image/jpeg', data: base64Image },
             };
-            contents = { parts: [imagePart] };
+            // Corrected: The 'contents' property must be an array of Content objects.
+            contents = [{ parts: [imagePart] }];
         } else if (prompt) {
-            contents = { parts: [{ text: prompt }] };
+            // Corrected: The 'contents' property must be an array of Content objects.
+            contents = [{ parts: [{ text: prompt }] }];
         } else {
             return new Response(JSON.stringify({ error: "Missing 'base64Image' or 'prompt' in request body" }), { status: 400 });
         }

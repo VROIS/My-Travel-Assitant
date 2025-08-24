@@ -1,4 +1,4 @@
-const CACHE_NAME = 'my-travel-assistant-cache-v8'; // Force update by bumping cache version
+const CACHE_NAME = 'my-travel-assistant-cache-v9'; // Force update by bumping cache version
 const urlsToCache = [
   '/',
   'index.html',
